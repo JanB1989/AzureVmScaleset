@@ -1,0 +1,25 @@
+{
+  "rgName": "rg-vmss-demo",
+  "rgLocation": "germanywestcentral",
+  "vmSize": "Standard_B2s",
+  "instanceCount": 1,
+  "autoscaleEnabled": true,
+  "autoscaleMin": 1,
+  "autoscaleMax": 3,
+  "autoscaleDefault": 1,
+  "autoscaleMetricName": "Percentage CPU",
+  "autoscaleTimeWindow": "PT5M",
+  "autoscaleTimeAggregation": "Average",
+  "autoscaleStatistic": "Average",
+  "autoscaleOperatorScaleOut": "GreaterThan",
+  "autoscaleOperatorScaleIn": "LessThan",
+  "autoscaleThresholdScaleOut": 70,
+  "autoscaleThresholdScaleIn": 30,
+  "autoscaleChangeCountScaleOut": "1",
+  "autoscaleChangeCountScaleIn": "1",
+  "autoscaleCooldownScaleOut": "PT2M",
+  "autoscaleCooldownScaleIn": "PT2M",
+  "adminPublicKey": "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIB6UrgofU2yx2tWHT3OFZESs8QSmyuWep5rT/02TLqcU vmss-demo"
+}
+
+

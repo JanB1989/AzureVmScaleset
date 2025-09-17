@@ -1,0 +1,256 @@
+{
+  "$schema": "https://schema.management.azure.com/schemas/2019-08-01/subscriptionDeploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+    "rgName": {
+      "type": "string",
+      "metadata": { "description": "Name of the resource group to create." }
+    },
+    "rgLocation": {
+      "type": "string",
+      "metadata": { "description": "Location of the resource group and deployment." }
+    },
+    "vmSize": { "type": "string" },
+    "instanceCount": { "type": "int" },
+    "autoscaleEnabled": { "type": "bool" },
+    "autoscaleMin": { "type": "int" },
+    "autoscaleMax": { "type": "int" },
+    "autoscaleDefault": { "type": "int" },
+    "autoscaleMetricName": { "type": "string" },
+    
+    "autoscaleTimeWindow": { "type": "string" },
+    "autoscaleTimeAggregation": { "type": "string" },
+    "autoscaleStatistic": { "type": "string" },
+    "autoscaleOperatorScaleOut": { "type": "string" },
+    "autoscaleOperatorScaleIn": { "type": "string" },
+    "autoscaleThresholdScaleOut": { "type": "int" },
+    "autoscaleThresholdScaleIn": { "type": "int" },
+    "autoscaleChangeCountScaleOut": { "type": "string" },
+    "autoscaleChangeCountScaleIn": { "type": "string" },
+    "autoscaleCooldownScaleOut": { "type": "string" },
+    "autoscaleCooldownScaleIn": { "type": "string" },
+    "adminPublicKey": { "type": "string" }
+  },
+  "variables": {},
+  "resources": [
+    {
+      "type": "Microsoft.Resources/resourceGroups",
+      "apiVersion": "2021-04-01",
+      "name": "[parameters('rgName')]",
+      "location": "[parameters('rgLocation')]",
+      "properties": {}
+    },
+    {
+      "type": "Microsoft.Resources/deployments",
+      "apiVersion": "2021-04-01",
+      "name": "vmssDeployment",
+      "resourceGroup": "[parameters('rgName')]",
+      "properties": {
+        "mode": "Incremental",
+        "expressionEvaluationOptions": { "scope": "inner" },
+        "template": {
+          "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+          "contentVersion": "1.0.0.0",
+          "parameters": {
+            "vmSize": { "type": "string" },
+            "instanceCount": { "type": "int" },
+            "autoscaleEnabled": { "type": "bool" },
+            "autoscaleMin": { "type": "int" },
+            "autoscaleMax": { "type": "int" },
+            "autoscaleDefault": { "type": "int" },
+            "autoscaleMetricName": { "type": "string" },
+            "autoscaleTimeWindow": { "type": "string" },
+            "autoscaleTimeAggregation": { "type": "string" },
+            "autoscaleStatistic": { "type": "string" },
+            "autoscaleOperatorScaleOut": { "type": "string" },
+            "autoscaleOperatorScaleIn": { "type": "string" },
+            "autoscaleThresholdScaleOut": { "type": "int" },
+            "autoscaleThresholdScaleIn": { "type": "int" },
+            "autoscaleChangeCountScaleOut": { "type": "string" },
+            "autoscaleChangeCountScaleIn": { "type": "string" },
+            "autoscaleCooldownScaleOut": { "type": "string" },
+            "autoscaleCooldownScaleIn": { "type": "string" },
+            "location": { "type": "string" },
+            "adminPublicKey": { "type": "string" }
+          },
+          "variables": {
+            "vmssName": "vmss-demo"
+          },
+          "resources": [
+            {
+              "type": "Microsoft.Compute/virtualMachineScaleSets",
+              "apiVersion": "2024-03-01",
+              "name": "[variables('vmssName')]",
+              "location": "[parameters('location')]",
+              "sku": {
+                "name": "[parameters('vmSize')]",
+                "capacity": "[parameters('instanceCount')]"
+              },
+              "properties": {
+                "upgradePolicy": { "mode": "Manual" },
+                "overprovision": true,
+                "virtualMachineProfile": {
+                  "storageProfile": {
+                    "imageReference": {
+                      "publisher": "Canonical",
+                      "offer": "0001-com-ubuntu-server-jammy",
+                      "sku": "22_04-lts-gen2",
+                      "version": "latest"
+                    }
+                  },
+                  "osProfile": {
+                    "computerNamePrefix": "vmssdemo",
+                    "adminUsername": "azureuser",
+                    "linuxConfiguration": {
+                      "disablePasswordAuthentication": true,
+                      "ssh": {
+                        "publicKeys": [
+                          {
+                            "path": "/home/azureuser/.ssh/authorized_keys",
+                            "keyData": "[parameters('adminPublicKey')]"
+                          }
+                        ]
+                      }
+                    },
+                    "customData": "[base64('#cloud-config\npackages:\n  - stress-ng\n')]"
+                  },
+                  "networkProfile": {
+                    "networkInterfaceConfigurations": [
+                      {
+                        "name": "nic",
+                        "properties": {
+                          "primary": true,
+                          "ipConfigurations": [
+                            {
+                              "name": "ipconfig1",
+                              "properties": {
+                                "subnet": { "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets','vnet-demo','subnet1')]" }
+                              }
+                            }
+                          ]
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Network/virtualNetworks','vnet-demo')]"
+              ]
+            },
+            {
+              "type": "Microsoft.Network/virtualNetworks",
+              "apiVersion": "2024-01-01",
+              "name": "vnet-demo",
+              "location": "[parameters('location')]",
+              "properties": {
+                "addressSpace": { "addressPrefixes": ["10.0.0.0/16"] },
+                "subnets": [
+                  { "name": "subnet1", "properties": { "addressPrefix": "10.0.0.0/24" } }
+                ]
+              }
+            },
+            {
+              "type": "Microsoft.Insights/autoscalesettings",
+              "apiVersion": "2022-10-01",
+              "name": "vmss-demo-autoscale",
+              "location": "[parameters('location')]",
+              "properties": {
+                "profiles": [
+                  {
+                    "name": "default",
+                    "capacity": {
+                      "minimum": "[string(parameters('autoscaleMin'))]",
+                      "maximum": "[string(parameters('autoscaleMax'))]",
+                      "default": "[string(parameters('autoscaleDefault'))]"
+                    },
+                    "rules": [
+                      {
+                        "metricTrigger": {
+                          "metricName": "[parameters('autoscaleMetricName')]",
+                          "metricNamespace": "Microsoft.Compute/virtualMachineScaleSets",
+                          "metricResourceUri": "[resourceId('Microsoft.Compute/virtualMachineScaleSets', variables('vmssName'))]",
+                          "timeGrain": "PT1M",
+                          "statistic": "[parameters('autoscaleStatistic')]",
+                          "timeWindow": "[parameters('autoscaleTimeWindow')]",
+                          "timeAggregation": "[parameters('autoscaleTimeAggregation')]",
+                          "operator": "[parameters('autoscaleOperatorScaleOut')]",
+                          "threshold": "[parameters('autoscaleThresholdScaleOut')]"
+                        },
+                        "scaleAction": {
+                          "direction": "Increase",
+                          "type": "ChangeCount",
+                          "value": "[parameters('autoscaleChangeCountScaleOut')]",
+                          "cooldown": "[parameters('autoscaleCooldownScaleOut')]"
+                        }
+                      },
+                      {
+                        "metricTrigger": {
+                          "metricName": "[parameters('autoscaleMetricName')]",
+                          "metricNamespace": "Microsoft.Compute/virtualMachineScaleSets",
+                          "metricResourceUri": "[resourceId('Microsoft.Compute/virtualMachineScaleSets', variables('vmssName'))]",
+                          "timeGrain": "PT1M",
+                          "statistic": "[parameters('autoscaleStatistic')]",
+                          "timeWindow": "[parameters('autoscaleTimeWindow')]",
+                          "timeAggregation": "[parameters('autoscaleTimeAggregation')]",
+                          "operator": "[parameters('autoscaleOperatorScaleIn')]",
+                          "threshold": "[parameters('autoscaleThresholdScaleIn')]"
+                        },
+                        "scaleAction": {
+                          "direction": "Decrease",
+                          "type": "ChangeCount",
+                          "value": "[parameters('autoscaleChangeCountScaleIn')]",
+                          "cooldown": "[parameters('autoscaleCooldownScaleIn')]"
+                        }
+                      }
+                    ]
+                  }
+                ],
+                "targetResourceUri": "[resourceId('Microsoft.Compute/virtualMachineScaleSets', variables('vmssName'))]",
+                "enabled": "[parameters('autoscaleEnabled')]"
+              },
+              "dependsOn": [
+                "[resourceId('Microsoft.Compute/virtualMachineScaleSets', variables('vmssName'))]"
+              ]
+            }
+          ],
+          "outputs": {
+            "vmssName": { "type": "string", "value": "[variables('vmssName')]" }
+          }
+        },
+            "parameters": {
+              "vmSize": { "value": "[parameters('vmSize')]" },
+              "instanceCount": { "value": "[parameters('instanceCount')]" },
+              "autoscaleEnabled": { "value": "[parameters('autoscaleEnabled')]" },
+              "autoscaleMin": { "value": "[parameters('autoscaleMin')]" },
+              "autoscaleMax": { "value": "[parameters('autoscaleMax')]" },
+              "autoscaleDefault": { "value": "[parameters('autoscaleDefault')]" },
+              "autoscaleMetricName": { "value": "[parameters('autoscaleMetricName')]" },
+              
+              "autoscaleTimeWindow": { "value": "[parameters('autoscaleTimeWindow')]" },
+              "autoscaleTimeAggregation": { "value": "[parameters('autoscaleTimeAggregation')]" },
+              "autoscaleStatistic": { "value": "[parameters('autoscaleStatistic')]" },
+              "autoscaleOperatorScaleOut": { "value": "[parameters('autoscaleOperatorScaleOut')]" },
+              "autoscaleOperatorScaleIn": { "value": "[parameters('autoscaleOperatorScaleIn')]" },
+              "autoscaleThresholdScaleOut": { "value": "[parameters('autoscaleThresholdScaleOut')]" },
+              "autoscaleThresholdScaleIn": { "value": "[parameters('autoscaleThresholdScaleIn')]" },
+              "autoscaleChangeCountScaleOut": { "value": "[parameters('autoscaleChangeCountScaleOut')]" },
+              "autoscaleChangeCountScaleIn": { "value": "[parameters('autoscaleChangeCountScaleIn')]" },
+              "autoscaleCooldownScaleOut": { "value": "[parameters('autoscaleCooldownScaleOut')]" },
+              "autoscaleCooldownScaleIn": { "value": "[parameters('autoscaleCooldownScaleIn')]" },
+              "location": { "value": "[parameters('rgLocation')]" },
+              "adminPublicKey": { "value": "[parameters('adminPublicKey')]" }
+            }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.Resources/resourceGroups', parameters('rgName'))]"
+      ]
+    }
+  ],
+  "outputs": {
+    "resourceGroupName": { "type": "string", "value": "[parameters('rgName')]" },
+    "vmssName": { "type": "string", "value": "[reference('vmssDeployment').outputs.vmssName.value]" }
+  }
+}
+
+
